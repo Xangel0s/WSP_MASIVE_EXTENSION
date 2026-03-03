@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "WhatsApp Prospecting Extension",
+  "description": "Carga una configuración JSON y ejecuta campañas con control de delay, pausas y reintentos en WhatsApp Web.",
+  "version": "1.0.0",
+  "permissions": ["storage", "tabs", "unlimitedStorage"],
+  "host_permissions": ["https://web.whatsapp.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "WhatsApp Prospecting",
+    "default_popup": "app/index.html?popup=1"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

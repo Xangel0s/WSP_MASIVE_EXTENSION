@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WhatsApp Prospecting</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="header">
+        <div class="header-row">
+          <div>
+            <h1>WhatsApp Prospecting</h1>
+            <p>Extensión MV3 para campañas con control de envío</p>
+          </div>
+          <button id="openDashboardBtn" class="btn btn-secondary btn-sm">Abrir Dashboard</button>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="Secciones del popup">
+        <button class="tab-btn is-active" data-tab-target="config">Configuración</button>
+        <button class="tab-btn" data-tab-target="control">Control</button>
+        <button class="tab-btn" data-tab-target="activity">Actividad</button>
+      </nav>
+
+      <section class="card tab-panel is-active" data-tab-panel="config">
+        <div class="card-title-row">
+          <h2>Configuración JSON</h2>
+          <button id="loadStoredConfigBtn" class="btn btn-secondary">Usar guardada</button>
+        </div>
+        <input id="configFileInput" type="file" accept=".json" />
+        <textarea
+          id="configTextarea"
+          rows="6"
+          placeholder='Pega el JSON exportado desde el dashboard...'
+        ></textarea>
+        <div class="row">
+          <button id="saveConfigBtn" class="btn btn-primary">Guardar configuración</button>
+        </div>
+        <p id="configSummary" class="muted">Sin configuración cargada</p>
+      </section>
+
+      <section class="card tab-panel" data-tab-panel="control">
+        <div class="card-title-row">
+          <h2>Estado de campaña</h2>
+          <span id="statusBadge" class="badge">idle</span>
+        </div>
+
+        <div class="kpi-grid">
+          <article class="kpi">
+            <span>Enviados</span>
+            <strong id="kpiSent">0</strong>
+          </article>
+          <article class="kpi">
+            <span>Pendientes</span>
+            <strong id="kpiPending">0</strong>
+          </article>
+          <article class="kpi">
+            <span>Fallidos</span>
+            <strong id="kpiFailed">0</strong>
+          </article>
+        </div>
+
+        <div class="progress-wrap">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+        <p id="progressText" class="muted">0%</p>
+
+        <div class="controls">
+          <button id="startBtn" class="btn btn-primary">Iniciar</button>
+          <button id="pauseBtn" class="btn btn-secondary">Pausar</button>
+          <button id="resumeBtn" class="btn btn-secondary">Reanudar</button>
+          <button id="stopBtn" class="btn btn-danger">Detener</button>
+        </div>
+        <div class="row">
+          <button id="exportCsvBtn" class="btn btn-secondary">Exportar resultados CSV</button>
+        </div>
+      </section>
+
+      <section class="card tab-panel" data-tab-panel="activity">
+        <h2>Actividad reciente</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Teléfono</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="activityTableBody">
+              <tr>
+                <td colspan="3" class="empty">Sin actividad</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <p id="errorText" class="error" hidden></p>
+    </main>
+
+    <script src="./popup.js"></script>
+  </body>
+</html>
