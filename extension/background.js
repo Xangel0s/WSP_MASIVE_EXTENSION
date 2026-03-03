@@ -387,7 +387,7 @@ async function sendVariationToContact(tabId, contact, variation) {
       : `[Media] ${variation.media.fileName || "archivo"}`;
 
     if (renderedMessage && !mediaResponse?.captionUsed) {
-      throw new Error("No se pudo aplicar el texto del adjunto (caption)");
+      await sendTextInCurrentChat(tabId, renderedMessage);
     }
 
     return { renderedMessage, previewMessage, resolvedContact };
@@ -438,6 +438,22 @@ async function sendMediaFromCurrentChat(tabId, media, caption) {
   }
 
   return response;
+}
+
+async function sendTextInCurrentChat(tabId, message) {
+  const response = await sendTabMessageWithRetry(
+    tabId,
+    {
+      type: "SEND_TEXT_IN_CURRENT_CHAT",
+      text: message,
+    },
+    10,
+    250
+  );
+
+  if (!response?.ok) {
+    throw new Error(response?.error || "No se pudo enviar texto en el chat actual");
+  }
 }
 
 async function readChatProfile(tabId, options = {}) {

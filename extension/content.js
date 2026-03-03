@@ -28,6 +28,13 @@ const FILE_INPUT_SELECTORS = [
   'input[type="file"]',
 ];
 
+const CHAT_INPUT_SELECTORS = [
+  'footer [contenteditable="true"][role="textbox"]',
+  'footer [contenteditable="true"][data-tab]',
+  'div[contenteditable="true"][role="textbox"]',
+  'div[contenteditable="true"][data-tab]',
+];
+
 const MEDIA_SEND_BUTTON_SELECTORS = [
   '[role="dialog"] button[data-testid="compose-btn-send"]',
   '[role="dialog"] button[aria-label="Send"]',
@@ -102,6 +109,13 @@ function initContentScript() {
 
     if (message?.type === "SEND_MEDIA") {
       attemptSendMediaFromCurrentChat(message?.media, message?.caption || "")
+        .then((result) => sendResponse(result))
+        .catch((error) => sendResponse({ ok: false, error: error.message || "Error desconocido" }));
+      return true;
+    }
+
+    if (message?.type === "SEND_TEXT_IN_CURRENT_CHAT") {
+      attemptSendTextInCurrentChat(String(message?.text || ""))
         .then((result) => sendResponse(result))
         .catch((error) => sendResponse({ ok: false, error: error.message || "Error desconocido" }));
       return true;
@@ -189,9 +203,6 @@ async function attemptSendMediaFromCurrentChat(media, captionText) {
   let captionUsed = false;
   if (String(captionText || "").trim()) {
     captionUsed = trySetCaptionText(String(captionText || "").trim());
-    if (!captionUsed) {
-      return { ok: false, error: "No se pudo insertar el texto del adjunto" };
-    }
   }
 
   let sent = false;
@@ -227,6 +238,45 @@ async function attemptSendMediaFromCurrentChat(media, captionText) {
   }
 
   return { ok: true, captionUsed };
+}
+
+async function attemptSendTextInCurrentChat(text) {
+  if (isLoginScreenVisible()) {
+    return { ok: false, error: "Debes iniciar sesión en WhatsApp Web" };
+  }
+
+  const normalized = String(text || "").trim();
+  if (!normalized) {
+    return { ok: true };
+  }
+
+  const input = await waitForChatInput(8000);
+  if (!input) {
+    return { ok: false, error: "No se encontró la caja de texto del chat" };
+  }
+
+  const typed = setTextInEditor(input, normalized);
+  if (!typed) {
+    return { ok: false, error: "No se pudo escribir el texto en el chat" };
+  }
+
+  const status = await waitForSendOrError(10000);
+  if (status === "invalid_phone") {
+    return { ok: false, error: "Número inválido o chat no disponible" };
+  }
+
+  if (status !== "send_button") {
+    return { ok: false, error: "No se encontró el botón de enviar texto" };
+  }
+
+  const sendButton = getSendButton();
+  if (!sendButton) {
+    return { ok: false, error: "Botón de enviar no disponible" };
+  }
+
+  clickElementRobust(sendButton);
+  await sleep(500);
+  return { ok: true };
 }
 
 async function waitForMediaSendButton(timeoutMs) {
@@ -791,9 +841,50 @@ function trySetCaptionText(text) {
     return false;
   }
 
+  return setTextInEditor(editor, text);
+}
+
+async function waitForChatInput(timeoutMs) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const input = getChatInputEditor();
+    if (input) {
+      return input;
+    }
+    await sleep(180);
+  }
+
+  return null;
+}
+
+function getChatInputEditor() {
+  for (const selector of CHAT_INPUT_SELECTORS) {
+    const candidates = Array.from(document.querySelectorAll(selector));
+    for (const candidate of candidates) {
+      if (!(candidate instanceof HTMLElement)) continue;
+      if (candidate.offsetParent === null) continue;
+      if (candidate.closest('[role="dialog"]')) continue;
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function setTextInEditor(editor, text) {
+  if (!editor) {
+    return false;
+  }
+
   editor.focus();
-  editor.textContent = "";
-  document.execCommand("insertText", false, text);
+
+  try {
+    editor.textContent = "";
+    document.execCommand("insertText", false, text);
+  } catch (_error) {
+    editor.textContent = text;
+  }
 
   if (normalizeText(editor.textContent || "") !== normalizeText(text)) {
     editor.textContent = text;
