@@ -181,18 +181,50 @@ async function attemptSendMediaFromCurrentChat(media, captionText) {
   await setFileInInput(fileInput, file);
   await sleep(1200);
 
+  const composerVisible = await waitForMediaComposerVisible(12000);
+  if (!composerVisible) {
+    return { ok: false, error: "No se abrió el compositor del adjunto" };
+  }
+
   let captionUsed = false;
   if (String(captionText || "").trim()) {
     captionUsed = trySetCaptionText(String(captionText || "").trim());
+    if (!captionUsed) {
+      return { ok: false, error: "No se pudo insertar el texto del adjunto" };
+    }
   }
 
-  const sendButton = await waitForMediaSendButton(20000);
-  if (!sendButton) {
-    return { ok: false, error: "Botón de enviar no disponible para adjunto" };
+  let sent = false;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const sendButton = await waitForMediaSendButton(7000);
+    if (!sendButton) {
+      continue;
+    }
+
+    clickElementRobust(sendButton);
+
+    const closed = await waitForMediaComposerClose(7000);
+    if (closed) {
+      sent = true;
+      break;
+    }
+
+    const captionEditor = getCaptionEditor();
+    if (captionEditor) {
+      captionEditor.focus();
+      captionEditor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      captionEditor.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", bubbles: true }));
+      const closedByEnter = await waitForMediaComposerClose(2000);
+      if (closedByEnter) {
+        sent = true;
+        break;
+      }
+    }
   }
 
-  clickElementRobust(sendButton);
-  await sleep(900);
+  if (!sent) {
+    return { ok: false, error: "El adjunto quedó en borrador y no se logró enviar" };
+  }
 
   return { ok: true, captionUsed };
 }
@@ -208,7 +240,46 @@ async function waitForMediaSendButton(timeoutMs) {
     await sleep(200);
   }
 
-  return getSendButton();
+  return null;
+}
+
+async function waitForMediaComposerVisible(timeoutMs) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    if (isMediaComposerOpen()) {
+      return true;
+    }
+    await sleep(150);
+  }
+
+  return false;
+}
+
+async function waitForMediaComposerClose(timeoutMs) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    if (!isMediaComposerOpen()) {
+      return true;
+    }
+    await sleep(180);
+  }
+
+  return false;
+}
+
+function isMediaComposerOpen() {
+  const dialog = document.querySelector('[role="dialog"]');
+  if (!dialog) {
+    return false;
+  }
+
+  const hasPreview = Boolean(
+    dialog.querySelector('img[src^="blob:"], img[src^="data:"], video, canvas, [data-testid*="media"], [data-testid*="preview"]')
+  );
+  const hasSendAction = Boolean(getMediaSendButton());
+  return hasPreview || hasSendAction;
 }
 
 async function readChatProfile(options = {}) {

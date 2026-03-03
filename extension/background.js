@@ -382,11 +382,12 @@ async function sendVariationToContact(tabId, contact, variation) {
 
   if (variation.media) {
     const mediaResponse = await sendMediaFromCurrentChat(tabId, variation.media, renderedMessage);
-    previewMessage = `[Media] ${variation.media.fileName || "archivo"}`;
+    previewMessage = renderedMessage
+      ? `[Media + Texto] ${variation.media.fileName || "archivo"}`
+      : `[Media] ${variation.media.fileName || "archivo"}`;
 
     if (renderedMessage && !mediaResponse?.captionUsed) {
-      await sendTextMessage(tabId, contact.phone, renderedMessage);
-      previewMessage = `[Media + Texto] ${variation.media.fileName || "archivo"}`;
+      throw new Error("No se pudo aplicar el texto del adjunto (caption)");
     }
 
     return { renderedMessage, previewMessage, resolvedContact };

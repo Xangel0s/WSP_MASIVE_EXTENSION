@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Play, Pause, Square, Send, Clock, XCircle, CheckCircle2, Download } from "lucide-react";
+import { Play, Pause, Square, Send, Clock, XCircle, CheckCircle2, Download, Loader2 } from "lucide-react";
 import { Contact, MessageVariation, SendingParams, ActivityEntry, CampaignState } from "@/types/campaign";
 import { motion } from "framer-motion";
 import { toast } from "@/hooks/use-toast";
@@ -419,6 +419,32 @@ const Step4Monitor = ({ contacts, messages, params, onBack, onStatusChange }: St
       .slice(0, 30);
   }, [activity]);
 
+  const attemptsSummary = useMemo(() => {
+    const attemptsLogs = rawLogs.filter((entry) => entry.status === "sent" || entry.status === "failed");
+    const totalAttemptedContacts = attemptsLogs.length;
+    const totalAttempts = attemptsLogs.reduce((acc, entry) => {
+      const attempts = Math.max(1, Number(entry.attempts) || 1);
+      return acc + attempts;
+    }, 0);
+
+    const retriedContacts = attemptsLogs.filter((entry) => Math.max(1, Number(entry.attempts) || 1) > 1).length;
+    const firstTrySuccess = attemptsLogs.filter(
+      (entry) => entry.status === "sent" && Math.max(1, Number(entry.attempts) || 1) === 1
+    ).length;
+    const failedAfterRetries = attemptsLogs.filter(
+      (entry) => entry.status === "failed" && Math.max(1, Number(entry.attempts) || 1) > 1
+    ).length;
+
+    return {
+      totalAttemptedContacts,
+      totalAttempts,
+      retriedContacts,
+      firstTrySuccess,
+      failedAfterRetries,
+      averageAttempts: totalAttemptedContacts > 0 ? (totalAttempts / totalAttemptedContacts).toFixed(2) : "0.00",
+    };
+  }, [rawLogs]);
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       <div className="grid grid-cols-3 gap-4">
@@ -491,6 +517,50 @@ const Step4Monitor = ({ contacts, messages, params, onBack, onStatusChange }: St
               Abre WhatsApp Web (web.whatsapp.com) para usar los envíos desde esta interfaz.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-white/80">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Intentos de envío</CardTitle>
+            {status === "running" ? (
+              <div className="flex items-center gap-2 text-xs text-primary">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="animate-pulse">Procesando intentos...</span>
+              </div>
+            ) : (
+              <span className="text-xs text-muted-foreground">Estado: {status}</span>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+            <div className="rounded-md border border-white/15 p-3 bg-muted/10">
+              <p className="text-muted-foreground text-xs">Intentos totales</p>
+              <p className="text-xl font-semibold">{attemptsSummary.totalAttempts}</p>
+            </div>
+            <div className="rounded-md border border-white/15 p-3 bg-muted/10">
+              <p className="text-muted-foreground text-xs">Contactos intentados</p>
+              <p className="text-xl font-semibold">{attemptsSummary.totalAttemptedContacts}</p>
+            </div>
+            <div className="rounded-md border border-white/15 p-3 bg-muted/10">
+              <p className="text-muted-foreground text-xs">Promedio por contacto</p>
+              <p className="text-xl font-semibold">{attemptsSummary.averageAttempts}</p>
+            </div>
+            <div className="rounded-md border border-white/15 p-3 bg-muted/10">
+              <p className="text-muted-foreground text-xs">Éxito al primer intento</p>
+              <p className="text-xl font-semibold text-primary">{attemptsSummary.firstTrySuccess}</p>
+            </div>
+            <div className="rounded-md border border-white/15 p-3 bg-muted/10">
+              <p className="text-muted-foreground text-xs">Con reintento</p>
+              <p className="text-xl font-semibold">{attemptsSummary.retriedContacts}</p>
+            </div>
+            <div className="rounded-md border border-white/15 p-3 bg-muted/10">
+              <p className="text-muted-foreground text-xs">Fallidos tras reintentos</p>
+              <p className="text-xl font-semibold text-destructive">{attemptsSummary.failedAfterRetries}</p>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
