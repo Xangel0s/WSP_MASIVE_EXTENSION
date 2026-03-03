@@ -28,6 +28,16 @@ const FILE_INPUT_SELECTORS = [
   'input[type="file"]',
 ];
 
+const MEDIA_SEND_BUTTON_SELECTORS = [
+  '[role="dialog"] button[data-testid="compose-btn-send"]',
+  '[role="dialog"] button[aria-label="Send"]',
+  '[role="dialog"] button[aria-label="Enviar"]',
+  '[role="dialog"] button[title="Send"]',
+  '[role="dialog"] button[title="Enviar"]',
+  '[role="dialog"] button:has(span[data-icon="send"])',
+  '[role="dialog"] button:has(span[data-icon="send-filled"])',
+];
+
 const CHAT_TITLE_SELECTORS = [
   'header [data-testid="conversation-info-header-chat-title"]',
   'header [data-testid="conversation-header"] span[dir="auto"]',
@@ -176,20 +186,29 @@ async function attemptSendMediaFromCurrentChat(media, captionText) {
     captionUsed = trySetCaptionText(String(captionText || "").trim());
   }
 
-  const sendStatus = await waitForSendOrError(20000);
-  if (sendStatus !== "send_button") {
-    return { ok: false, error: "No apareció el botón de enviar para el adjunto" };
-  }
-
-  const sendButton = getSendButton();
+  const sendButton = await waitForMediaSendButton(20000);
   if (!sendButton) {
     return { ok: false, error: "Botón de enviar no disponible para adjunto" };
   }
 
-  sendButton.click();
+  clickElementRobust(sendButton);
   await sleep(900);
 
   return { ok: true, captionUsed };
+}
+
+async function waitForMediaSendButton(timeoutMs) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const button = getMediaSendButton();
+    if (button) {
+      return button;
+    }
+    await sleep(200);
+  }
+
+  return getSendButton();
 }
 
 async function readChatProfile(options = {}) {
@@ -702,7 +721,13 @@ function trySetCaptionText(text) {
   }
 
   editor.focus();
-  editor.textContent = text;
+  editor.textContent = "";
+  document.execCommand("insertText", false, text);
+
+  if (normalizeText(editor.textContent || "") !== normalizeText(text)) {
+    editor.textContent = text;
+  }
+
   editor.dispatchEvent(
     new InputEvent("input", {
       bubbles: true,
@@ -713,6 +738,42 @@ function trySetCaptionText(text) {
 
   const finalText = String(editor.textContent || "").trim();
   return finalText.length > 0;
+}
+
+function getMediaSendButton() {
+  for (const selector of MEDIA_SEND_BUTTON_SELECTORS) {
+    const candidate = document.querySelector(selector);
+    if (!candidate) continue;
+
+    const button = candidate.tagName === "BUTTON" ? candidate : candidate.closest("button");
+    if (button && !button.disabled && button.offsetParent !== null) {
+      return button;
+    }
+  }
+
+  const dialog = document.querySelector('[role="dialog"]');
+  if (!dialog) {
+    return null;
+  }
+
+  const fallbackButtons = Array.from(dialog.querySelectorAll("button"));
+  for (const button of fallbackButtons) {
+    if (button.disabled) continue;
+    if (button.offsetParent === null) continue;
+
+    const icon = button.querySelector('span[data-icon="send"], span[data-icon="send-filled"]');
+    if (icon) {
+      return button;
+    }
+
+    const aria = String(button.getAttribute("aria-label") || "").toLowerCase();
+    const title = String(button.getAttribute("title") || "").toLowerCase();
+    if (aria.includes("send") || aria.includes("enviar") || title.includes("send") || title.includes("enviar")) {
+      return button;
+    }
+  }
+
+  return null;
 }
 
 function getCaptionEditor() {
