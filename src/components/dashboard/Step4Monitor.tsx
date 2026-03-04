@@ -209,9 +209,9 @@ const Step4Monitor = ({ contacts, messages, params, onBack, onStatusChange }: St
       .map((m) => ({
         label: m.label,
         content: m.content.trim(),
-        media: m.media || null,
+        media: null,
       }))
-      .filter((m) => m.content.length > 0 || Boolean(m.media));
+      .filter((m) => m.content.length > 0);
 
     return {
       normalizedContacts,

@@ -380,21 +380,8 @@ async function sendVariationToContact(tabId, contact, variation) {
   const renderedMessage = applyTemplate(variation.content || "", resolvedContact);
   let previewMessage = renderedMessage;
 
-  if (variation.media) {
-    const mediaResponse = await sendMediaFromCurrentChat(tabId, variation.media, renderedMessage);
-    previewMessage = renderedMessage
-      ? `[Media + Texto] ${variation.media.fileName || "archivo"}`
-      : `[Media] ${variation.media.fileName || "archivo"}`;
-
-    if (renderedMessage && !mediaResponse?.captionUsed) {
-      throw new Error("No se pudo incluir el texto en el adjunto. Se canceló el envío para evitar texto suelto.");
-    }
-
-    return { renderedMessage, previewMessage, resolvedContact };
-  }
-
   if (!renderedMessage.trim()) {
-    throw new Error("La variación no tiene texto ni adjunto");
+    throw new Error("La variación no tiene texto");
   }
 
   await sendTextMessage(tabId, contact.phone, renderedMessage);
@@ -419,25 +406,6 @@ async function sendTextMessage(tabId, phone, message) {
   if (!response?.ok) {
     throw new Error(response?.error || "No se pudo enviar texto desde WhatsApp Web");
   }
-}
-
-async function sendMediaFromCurrentChat(tabId, media, caption) {
-  const response = await sendTabMessageWithRetry(
-    tabId,
-    {
-      type: "SEND_MEDIA",
-      media,
-      caption: caption || "",
-    },
-    15,
-    300
-  );
-
-  if (!response?.ok) {
-    throw new Error(response?.error || "No se pudo enviar adjunto desde WhatsApp Web");
-  }
-
-  return response;
 }
 
 async function readChatProfile(tabId, options = {}) {
@@ -553,7 +521,7 @@ function normalizeConfig(rawConfig) {
   const rawMessages = Array.isArray(rawConfig.messages) ? rawConfig.messages : [];
   const messages = rawMessages
     .map((entry, index) => normalizeMessage(entry, index))
-    .filter((entry) => entry.content.length > 0 || Boolean(entry.media));
+    .filter((entry) => entry.content.length > 0);
 
   if (messages.length === 0) {
     throw new Error("No hay mensajes válidos en la configuración");
@@ -590,50 +558,11 @@ function normalizeMessage(entry, index) {
   }
 
   const label = String(entry?.label || `Variación ${index + 1}`).trim();
-  const mediaCheck = normalizeMedia(entry?.media);
-  if (entry?.media && !mediaCheck.ok) {
-    throw new Error(`Adjunto inválido en \"${label}\": ${mediaCheck.error}`);
-  }
 
   return {
     label,
     content: String(entry?.content || "").trim(),
-    media: mediaCheck.value,
-  };
-}
-
-function normalizeMedia(media) {
-  if (!media || typeof media !== "object") {
-    return { ok: true, value: null };
-  }
-
-  const dataUrl = String(media.dataUrl || "").trim();
-  if (!dataUrl.startsWith("data:")) {
-    return {
-      ok: false,
-      value: null,
-      error: "el archivo no tiene formato data URL válido",
-    };
-  }
-
-  if (dataUrl.length > 12 * 1024 * 1024) {
-    return {
-      ok: false,
-      value: null,
-      error: "el archivo es demasiado grande para enviarse por la extensión",
-    };
-  }
-
-  const fileName = String(media.fileName || "adjunto").trim() || "adjunto";
-  const mimeType = String(media.mimeType || "").trim();
-
-  return {
-    ok: true,
-    value: {
-      dataUrl,
-      fileName,
-      mimeType,
-    },
+    media: null,
   };
 }
 

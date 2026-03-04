@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, Plus, Trash2, Eye, Shuffle, ListOrdered, Paperclip, X } from "lucide-react";
+import { MessageSquare, Plus, Trash2, Eye, Shuffle, ListOrdered } from "lucide-react";
 import { MessageVariation, Contact, SendingParams } from "@/types/campaign";
 import { motion } from "framer-motion";
-import { toast } from "@/hooks/use-toast";
 
 interface Step2Props {
   messages: MessageVariation[];
@@ -20,19 +19,6 @@ interface Step2Props {
 }
 
 const SPEECH_NOTES_STORAGE_KEY = "wsp_speech_notes";
-const MAX_MEDIA_SIZE_BYTES = 8 * 1024 * 1024;
-
-const isImageMedia = (mimeType?: string, dataUrl?: string, fileName?: string) => {
-  if (mimeType?.startsWith("image/")) return true;
-  if (dataUrl?.startsWith("data:image/")) return true;
-  return Boolean(fileName?.match(/\.(png|jpe?g|gif|webp|bmp|svg)$/i));
-};
-
-const isVideoMedia = (mimeType?: string, dataUrl?: string, fileName?: string) => {
-  if (mimeType?.startsWith("video/")) return true;
-  if (dataUrl?.startsWith("data:video/")) return true;
-  return Boolean(fileName?.match(/\.(mp4|webm|ogg|mov|m4v)$/i));
-};
 
 const Step2Messages = ({ messages, setMessages, contacts, params, setParams, onNext, onBack }: Step2Props) => {
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
@@ -43,8 +29,6 @@ const Step2Messages = ({ messages, setMessages, contacts, params, setParams, onN
       return "";
     }
   });
-  const mediaInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
   useEffect(() => {
     try {
       localStorage.setItem(SPEECH_NOTES_STORAGE_KEY, speechNotes);
@@ -76,84 +60,6 @@ const Step2Messages = ({ messages, setMessages, contacts, params, setParams, onN
     setMessages(messages.filter((m) => m.id !== id));
   };
 
-  const setVariationMedia = (id: string, file: File) => {
-    const targetMessage = messages.find((m) => m.id === id);
-    if (!targetMessage || !targetMessage.content.trim()) {
-      toast({
-        title: "Primero escribe el texto",
-        description: "Para este flujo, agrega el mensaje antes de importar imagen/video",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const isSupported = file.type.startsWith("image/") || file.type.startsWith("video/");
-    if (!isSupported) {
-      toast({
-        title: "Archivo no soportado",
-        description: "Solo se permiten imágenes o videos",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (file.size > MAX_MEDIA_SIZE_BYTES) {
-      toast({
-        title: "Archivo demasiado grande",
-        description: "Máximo 8MB por variación",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || "");
-      if (!dataUrl.startsWith("data:")) {
-        toast({
-          title: "No se pudo leer el archivo",
-          description: "Intenta con otro archivo",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      setMessages(
-        messages.map((m) =>
-          m.id === id
-            ? {
-                ...m,
-                media: {
-                  dataUrl,
-                  fileName: file.name,
-                  mimeType: file.type || "application/octet-stream",
-                },
-              }
-            : m
-        )
-      );
-
-      toast({
-        title: "Adjunto cargado",
-        description: `${file.name} listo para esta variación`,
-      });
-    };
-
-    reader.onerror = () => {
-      toast({
-        title: "Error leyendo archivo",
-        description: "No se pudo procesar el archivo",
-        variant: "destructive",
-      });
-    };
-
-    reader.readAsDataURL(file);
-  };
-
-  const clearVariationMedia = (id: string) => {
-    setMessages(messages.map((m) => (m.id === id ? { ...m, media: undefined } : m)));
-  };
-
   const replaceVariables = (text: string) => {
     const sample = contacts[0] || { name: "Juan", business: "TechCorp", location: "CDMX" };
     return text
@@ -162,7 +68,7 @@ const Step2Messages = ({ messages, setMessages, contacts, params, setParams, onN
       .replace(/\[Ubicación\]/g, sample.location || "CDMX");
   };
 
-  const hasValidMessages = messages.some((m) => m.content.trim().length > 0 || Boolean(m.media));
+  const hasValidMessages = messages.some((m) => m.content.trim().length > 0);
   const variationEvery = Math.max(1, params.variationEvery || 1);
   const isRandomMode = params.variationMode === "random";
   const sequencePreview = messages
@@ -277,31 +183,6 @@ const Step2Messages = ({ messages, setMessages, contacts, params, setParams, onN
                 />
               </div>
               <div className="flex gap-1">
-                <input
-                  ref={(node) => {
-                    mediaInputRefs.current[msg.id] = node;
-                  }}
-                  type="file"
-                  accept="image/*,video/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setVariationMedia(msg.id, file);
-                    }
-                    e.target.value = "";
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  onClick={() => mediaInputRefs.current[msg.id]?.click()}
-                  title="Adjuntar imagen/video"
-                >
-                  <span className="text-base leading-none">📎</span>
-                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -333,43 +214,6 @@ const Step2Messages = ({ messages, setMessages, contacts, params, setParams, onN
               rows={4}
               className="resize-none bg-muted/25 border-white/10 min-h-[92px]"
             />
-            {msg.media && (
-              <div className="rounded-lg border border-white/20 bg-muted/20 p-3 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
-                    <Paperclip className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{msg.media.fileName}</span>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-                    onClick={() => clearVariationMedia(msg.id)}
-                    title="Quitar adjunto"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-
-                {isImageMedia(msg.media.mimeType, msg.media.dataUrl, msg.media.fileName) && (
-                  <img
-                    src={msg.media.dataUrl}
-                    alt={msg.media.fileName}
-                    className="w-full max-h-56 rounded-md border border-white/15 object-contain bg-black/20"
-                    loading="lazy"
-                  />
-                )}
-
-                {isVideoMedia(msg.media.mimeType, msg.media.dataUrl, msg.media.fileName) && (
-                  <video
-                    src={msg.media.dataUrl}
-                    controls
-                    className="w-full max-h-56 rounded-md border border-white/15 bg-black/20"
-                  />
-                )}
-              </div>
-            )}
             {previewIndex === index && msg.content && (
               <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
                 <p className="text-xs text-primary font-medium mb-2">Vista previa:</p>
