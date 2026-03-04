@@ -77,6 +77,16 @@ const Step2Messages = ({ messages, setMessages, contacts, params, setParams, onN
   };
 
   const setVariationMedia = (id: string, file: File) => {
+    const targetMessage = messages.find((m) => m.id === id);
+    if (!targetMessage || !targetMessage.content.trim()) {
+      toast({
+        title: "Primero escribe el texto",
+        description: "Para este flujo, agrega el mensaje antes de importar imagen/video",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const isSupported = file.type.startsWith("image/") || file.type.startsWith("video/");
     if (!isSupported) {
       toast({
