@@ -36,13 +36,6 @@ const CHAT_INPUT_SELECTORS = [
 ];
 
 const MEDIA_SEND_BUTTON_SELECTORS = [
-  '[role="dialog"] button[data-testid="compose-btn-send"]',
-  '[role="dialog"] button[aria-label="Send"]',
-  '[role="dialog"] button[aria-label="Enviar"]',
-  '[role="dialog"] button[title="Send"]',
-  '[role="dialog"] button[title="Enviar"]',
-  '[role="dialog"] button:has(span[data-icon="send"])',
-  '[role="dialog"] button:has(span[data-icon="send-filled"])',
   'button[data-testid="compose-btn-send"]',
   'button[aria-label="Send"]',
   'button[aria-label="Enviar"]',
@@ -327,9 +320,13 @@ async function waitForMediaComposerClose(timeoutMs) {
 }
 
 function isMediaComposerOpen() {
-  const hasDraftPreview = hasPendingMediaPreview();
+  const composerRoot = getMediaComposerRoot();
+  if (!composerRoot) {
+    return false;
+  }
+
   const hasSendAction = Boolean(getMediaSendButton());
-  return hasDraftPreview && hasSendAction;
+  return hasSendAction;
 }
 
 async function readChatProfile(options = {}) {
@@ -903,10 +900,15 @@ function setTextInEditor(editor, text) {
 }
 
 function getMediaSendButton() {
+  const composerRoot = getMediaComposerRoot();
+  if (!composerRoot) {
+    return null;
+  }
+
   const uniqueButtons = new Set();
 
   for (const selector of MEDIA_SEND_BUTTON_SELECTORS) {
-    const candidates = Array.from(document.querySelectorAll(selector));
+    const candidates = Array.from(composerRoot.querySelectorAll(selector));
     for (const candidate of candidates) {
       const button = candidate.tagName === "BUTTON" ? candidate : candidate.closest("button");
       if (!button || button.disabled || button.offsetParent === null) continue;
@@ -932,7 +934,7 @@ function getMediaSendButton() {
     return rankedButtons[0];
   }
 
-  const fallbackButtons = Array.from(document.querySelectorAll("button"));
+  const fallbackButtons = Array.from(composerRoot.querySelectorAll("button"));
   for (const button of fallbackButtons) {
     if (button.disabled) continue;
     if (button.offsetParent === null) continue;
@@ -953,7 +955,12 @@ function getMediaSendButton() {
 }
 
 function getCaptionEditor() {
-  const candidates = Array.from(document.querySelectorAll('[contenteditable="true"]')).filter((candidate) => {
+  const composerRoot = getMediaComposerRoot();
+  if (!composerRoot) {
+    return null;
+  }
+
+  const candidates = Array.from(composerRoot.querySelectorAll('[contenteditable="true"]')).filter((candidate) => {
     if (!(candidate instanceof HTMLElement)) return false;
     if (candidate.offsetParent === null) return false;
     return true;
@@ -1003,6 +1010,44 @@ function hasPendingMediaPreview() {
     const rect = preview.getBoundingClientRect();
     return rect.width >= 140 && rect.height >= 140;
   });
+}
+
+function getMediaComposerRoot() {
+  const previews = Array.from(document.querySelectorAll('img[src^="blob:"], video[src^="blob:"], img[src^="data:image/"]'))
+    .filter((node) => node instanceof HTMLElement)
+    .filter((node) => node.offsetParent !== null)
+    .filter((node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.width >= 140 && rect.height >= 140;
+    });
+
+  if (previews.length === 0) {
+    return null;
+  }
+
+  previews.sort((a, b) => {
+    const rectA = a.getBoundingClientRect();
+    const rectB = b.getBoundingClientRect();
+    return rectB.width * rectB.height - rectA.width * rectA.height;
+  });
+
+  const preview = previews[0];
+  let current = preview.parentElement;
+  while (current && current !== document.body) {
+    const hasSendButton = Boolean(
+      current.querySelector(
+        'button[data-testid="compose-btn-send"], button[aria-label="Send"], button[aria-label="Enviar"], button[title="Send"], button[title="Enviar"], button span[data-icon="send"], button span[data-icon="send-filled"]'
+      )
+    );
+
+    if (hasSendButton) {
+      return current;
+    }
+
+    current = current.parentElement;
+  }
+
+  return preview.closest('[role="dialog"]') || preview.parentElement;
 }
 
 function hasInvalidPhoneError() {
