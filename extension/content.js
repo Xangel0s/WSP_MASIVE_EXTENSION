@@ -320,13 +320,7 @@ async function waitForMediaComposerClose(timeoutMs) {
 }
 
 function isMediaComposerOpen() {
-  const composerRoot = getMediaComposerRoot();
-  if (!composerRoot) {
-    return false;
-  }
-
-  const hasSendAction = Boolean(getMediaSendButton());
-  return hasSendAction;
+  return hasPendingMediaPreview();
 }
 
 async function readChatProfile(options = {}) {
@@ -900,41 +894,66 @@ function setTextInEditor(editor, text) {
 }
 
 function getMediaSendButton() {
-  const composerRoot = getMediaComposerRoot();
-  if (!composerRoot) {
+  const preview = getPrimaryMediaPreview();
+  if (!preview) {
     return null;
   }
 
-  const uniqueButtons = new Set();
+  const previewRect = preview.getBoundingClientRect();
+  const allButtons = new Set();
 
   for (const selector of MEDIA_SEND_BUTTON_SELECTORS) {
-    const candidates = Array.from(composerRoot.querySelectorAll(selector));
+    const candidates = Array.from(document.querySelectorAll(selector));
     for (const candidate of candidates) {
       const button = candidate.tagName === "BUTTON" ? candidate : candidate.closest("button");
       if (!button || button.disabled || button.offsetParent === null) continue;
-      uniqueButtons.add(button);
+      allButtons.add(button);
     }
   }
 
-  const rankedButtons = Array.from(uniqueButtons).filter((button) => {
+  const rankedButtons = Array.from(allButtons).filter((button) => {
     const rect = button.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   });
 
   if (rankedButtons.length > 0) {
-    rankedButtons.sort((a, b) => {
-      const rectA = a.getBoundingClientRect();
-      const rectB = b.getBoundingClientRect();
-      if (rectA.bottom !== rectB.bottom) {
-        return rectB.bottom - rectA.bottom;
-      }
-      return rectB.right - rectA.right;
-    });
+    const scoreButton = (button) => {
+      const rect = button.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const dx = Math.abs(centerX - previewRect.right);
+      const dy = Math.abs(centerY - previewRect.bottom);
+      const inFooterPenalty = button.closest("footer") ? 600 : 0;
+      return dx + dy + inFooterPenalty;
+    };
 
-    return rankedButtons[0];
+    rankedButtons.sort((a, b) => scoreButton(a) - scoreButton(b));
+    const best = rankedButtons[0];
+    if (best) {
+      return best;
+    }
   }
 
-  const fallbackButtons = Array.from(composerRoot.querySelectorAll("button"));
+  const fallbackButtons = Array.from(document.querySelectorAll("button"));
+  for (const button of fallbackButtons) {
+    if (button.disabled) continue;
+    if (button.offsetParent === null) continue;
+
+    const icon = button.querySelector('span[data-icon="send"], span[data-icon="send-filled"]');
+    if (icon && !button.closest("footer")) {
+      return button;
+    }
+
+    const aria = String(button.getAttribute("aria-label") || "").toLowerCase();
+    const title = String(button.getAttribute("title") || "").toLowerCase();
+    if (
+      (aria.includes("send") || aria.includes("enviar") || title.includes("send") || title.includes("enviar")) &&
+      !button.closest("footer")
+    ) {
+      return button;
+    }
+  }
+
   for (const button of fallbackButtons) {
     if (button.disabled) continue;
     if (button.offsetParent === null) continue;
@@ -955,12 +974,13 @@ function getMediaSendButton() {
 }
 
 function getCaptionEditor() {
-  const composerRoot = getMediaComposerRoot();
-  if (!composerRoot) {
+  const preview = getPrimaryMediaPreview();
+  if (!preview) {
     return null;
   }
 
-  const candidates = Array.from(composerRoot.querySelectorAll('[contenteditable="true"]')).filter((candidate) => {
+  const previewRect = preview.getBoundingClientRect();
+  const candidates = Array.from(document.querySelectorAll('[contenteditable="true"]')).filter((candidate) => {
     if (!(candidate instanceof HTMLElement)) return false;
     if (candidate.offsetParent === null) return false;
     return true;
@@ -970,12 +990,7 @@ function getCaptionEditor() {
     return null;
   }
 
-  const dialogCandidate = candidates.find((candidate) => candidate.closest('[role="dialog"]'));
-  if (dialogCandidate) {
-    return dialogCandidate;
-  }
-
-  const labeledCandidate = candidates.find((candidate) => {
+  const labelPreferred = candidates.find((candidate) => {
     const label = String(candidate.getAttribute("aria-label") || "").toLowerCase();
     return (
       label.includes("caption") ||
@@ -986,68 +1001,50 @@ function getCaptionEditor() {
     );
   });
 
-  if (labeledCandidate) {
-    return labeledCandidate;
+  if (labelPreferred) {
+    return labelPreferred;
   }
 
-  for (const candidate of candidates) {
-    const label = String(candidate.getAttribute("aria-label") || "").toLowerCase();
-    if (label.includes("caption") || label.includes("descripción") || label.includes("mensaje")) {
-      return candidate;
-    }
-  }
+  const scoreEditor = (editor) => {
+    const rect = editor.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const dx = Math.abs(centerX - previewRect.right);
+    const dy = Math.abs(centerY - previewRect.bottom);
+    const footerPenalty = editor.closest("footer") ? 400 : 0;
+    return dx + dy + footerPenalty;
+  };
 
-  return candidates[candidates.length - 1];
+  candidates.sort((a, b) => scoreEditor(a) - scoreEditor(b));
+  return candidates[0] || null;
 }
 
 function hasPendingMediaPreview() {
-  const previews = Array.from(document.querySelectorAll('img[src^="blob:"], video[src^="blob:"], img[src^="data:image/"]'));
-
-  return previews.some((preview) => {
-    if (!(preview instanceof HTMLElement)) return false;
-    if (preview.offsetParent === null) return false;
-
-    const rect = preview.getBoundingClientRect();
-    return rect.width >= 140 && rect.height >= 140;
-  });
+  return Boolean(getPrimaryMediaPreview());
 }
 
-function getMediaComposerRoot() {
-  const previews = Array.from(document.querySelectorAll('img[src^="blob:"], video[src^="blob:"], img[src^="data:image/"]'))
-    .filter((node) => node instanceof HTMLElement)
-    .filter((node) => node.offsetParent !== null)
-    .filter((node) => {
-      const rect = node.getBoundingClientRect();
+function getPrimaryMediaPreview() {
+  const previews = Array.from(document.querySelectorAll('img[src^="blob:"], video[src^="blob:"], img[src^="data:image/"]'));
+
+  const visible = previews
+    .filter((preview) => preview instanceof HTMLElement)
+    .filter((preview) => preview.offsetParent !== null)
+    .filter((preview) => {
+      const rect = preview.getBoundingClientRect();
       return rect.width >= 140 && rect.height >= 140;
     });
 
-  if (previews.length === 0) {
+  if (visible.length === 0) {
     return null;
   }
 
-  previews.sort((a, b) => {
+  visible.sort((a, b) => {
     const rectA = a.getBoundingClientRect();
     const rectB = b.getBoundingClientRect();
     return rectB.width * rectB.height - rectA.width * rectA.height;
   });
 
-  const preview = previews[0];
-  let current = preview.parentElement;
-  while (current && current !== document.body) {
-    const hasSendButton = Boolean(
-      current.querySelector(
-        'button[data-testid="compose-btn-send"], button[aria-label="Send"], button[aria-label="Enviar"], button[title="Send"], button[title="Enviar"], button span[data-icon="send"], button span[data-icon="send-filled"]'
-      )
-    );
-
-    if (hasSendButton) {
-      return current;
-    }
-
-    current = current.parentElement;
-  }
-
-  return preview.closest('[role="dialog"]') || preview.parentElement;
+  return visible[0] || null;
 }
 
 function hasInvalidPhoneError() {
